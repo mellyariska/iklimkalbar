@@ -1,87 +1,132 @@
-# kalbar_dashboard_clean.py
-
+import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import r2_score, mean_squared_error
 
-# =========================
-# 1. Load Data
-# =========================
-df = pd.read_excel("Data_Kalbar.xlsx")
+# =====================
+# BACA DATA
+# =====================
+data = pd.read_excel("D:\data\dashboard\dashboard_kalimantan\Data_Kalbar_Tahunan_1981_2020.xlsx")
 
-# =========================
-# 2. Visualisasi Tren Iklim
-# =========================
-plt.figure(figsize=(10, 6))
-df.set_index("Tahun")[["Tavg", "kelembaban", "curah_hujan"]].plot()
-plt.title("Tren Iklim Kalimantan Barat (Tavg, Kelembaban, Curah Hujan)")
-plt.ylabel("Nilai")
-plt.xlabel("Tahun")
-plt.grid(True)
-plt.tight_layout()
-plt.savefig("tren_iklim_kalbar.png")
-plt.close()
+# Rename agar lebih mudah
+data = data.rename(columns={
+    "Tavg": "Suhu",
+    "curah_hujan": "Curah_Hujan",
+    "Tx": "Suhu_Max",
+    "Tn": "Suhu_Min"
+})
 
-# =========================
-# 3. Korelasi Antar Variabel
-# =========================
-# Ambil hanya kolom numerik
-numeric_df = df.select_dtypes(include=['number'])
+# =====================
+# HEADER
+# =====================
+st.title("🌦️ Dashboard Analisis Iklim Sumatera Selatan")
+st.markdown("Visualisasi data iklim tahunan berdasarkan parameter suhu, hujan, kelembaban, angin, dan radiasi matahari.")
 
-plt.figure(figsize=(8, 6))
-sns.heatmap(numeric_df.corr(), annot=True, cmap="coolwarm")
-plt.title("Korelasi Antar Variabel Iklim Kalimantan Barat")
-plt.tight_layout()
-plt.savefig("korelasi_variabel.png")
-plt.close()
+# =====================
+# TABEL DATA
+# =====================
+st.subheader("📄 Data Iklim")
+st.dataframe(data)
 
-# =========================
-# 4. Prediksi Curah Hujan
-# =========================
-# Definisikan fitur dan target
-features = ['Tn', 'Tx', 'Tavg', 'kelembaban', 'matahari', 'kecepatan_angin']
-target = 'curah_hujan'
+# =====================
+# SUHU
+# =====================
+st.subheader("🌡️ Tren Suhu Rata-rata Tahunan")
+st.line_chart(data.set_index("Tahun")["Suhu"])
 
-# Drop baris dengan NaN (jika ada)
-df_clean = df.dropna(subset=features + [target])
+# =====================
+# CURAH HUJAN
+# =====================
+st.subheader("🌧️ Curah Hujan Tahunan")
+st.bar_chart(data.set_index("Tahun")["Curah_Hujan"])
 
-# Bagi data
-X = df_clean[features]
-y = df_clean[target]
-X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=42)
+# =====================
+# RENTANG SUHU
+# =====================
+st.subheader("📉 Rentang Suhu Tahunan (Max - Min)")
+data["Rentang_Suhu"] = data["Suhu_Max"] - data["Suhu_Min"]
+st.line_chart(data.set_index("Tahun")["Rentang_Suhu"])
 
-# Buat model dan latih
-model = RandomForestRegressor(n_estimators=100, random_state=42)
-model.fit(X_train, y_train)
+# =====================
+# ANOMALI SUHU
+# =====================
+st.subheader("📈 Anomali Suhu terhadap Rata-rata 1981–2010")
+baseline = data[(data["Tahun"] >= 1981) & (data["Tahun"] <= 2010)]["Suhu"].mean()
+data["Anomali_Suhu"] = data["Suhu"] - baseline
 
-# Prediksi dan evaluasi
-y_pred = model.predict(X_test)
-r2 = r2_score(y_test, y_pred)
-mse = mean_squared_error(y_test, y_pred)
-rmse = mse ** 0.5
+fig1, ax1 = plt.subplots(figsize=(10, 4))
+sns.barplot(x="Tahun", y="Anomali_Suhu", data=data, palette="coolwarm", ax=ax1)
+ax1.axhline(0, color="black", linestyle="--")
+ax1.set_ylabel("Anomali (°C)")
+plt.xticks(rotation=45)
+st.pyplot(fig1)
 
-# Cetak hasil
-print("===== EVALUASI MODEL RANDOM FOREST =====")
-print(f"R² Score  : {r2:.4f}")
-print(f"RMSE      : {rmse:.2f} mm")
+# =====================
+# KORELASI SUHU - HUJAN
+# =====================
+st.subheader("🔍 Korelasi Suhu vs Curah Hujan")
+fig2, ax2 = plt.subplots()
+sns.scatterplot(data=data, x="Suhu", y="Curah_Hujan", ax=ax2)
+sns.regplot(data=data, x="Suhu", y="Curah_Hujan", scatter=False, ax=ax2, color="red")
+st.pyplot(fig2)
 
+# =====================
+# RATA-RATA PER DEKADE
+# =====================
+st.subheader("📊 Rata-rata Suhu & Curah Hujan per Dekade")
+data["Dekade"] = (data["Tahun"] // 10) * 10
+avg_dekade = data.groupby("Dekade")[["Suhu", "Curah_Hujan"]].mean().round(2)
+st.dataframe(avg_dekade)
 
-# Cetak hasil
-print("===== EVALUASI MODEL RANDOM FOREST =====")
-print(f"R² Score  : {r2:.4f}")
-print(f"RMSE      : {rmse:.2f} mm")
+fig3, ax3 = plt.subplots()
+avg_dekade.plot(kind="bar", ax=ax3)
+ax3.set_ylabel("Rata-rata")
+st.pyplot(fig3)
 
-# Visualisasi aktual vs prediksi
-plt.figure(figsize=(8, 5))
-plt.scatter(y_test, y_pred, color='blue', alpha=0.7)
-plt.plot([y.min(), y.max()], [y.min(), y.max()], 'r--')
-plt.xlabel("Curah Hujan Aktual (mm)")
-plt.ylabel("Curah Hujan Prediksi (mm)")
-plt.title("Prediksi vs Aktual Curah Hujan (Random Forest)")
-plt.grid(True)
-plt.tight_layout()
-plt.savefig("prediksi_vs_aktual.png")
-plt.close()
+# =====================
+# TAHUN EKSTREM
+# =====================
+st.subheader("📌 Tahun Ekstrem")
+st.markdown(f"""
+- 🌡️ **Tahun Terpanas**: {data.loc[data['Suhu'].idxmax()]['Tahun']} ({data['Suhu'].max():.2f} °C)  
+- ❄️ **Tahun Terdingin**: {data.loc[data['Suhu'].idxmin()]['Tahun']} ({data['Suhu'].min():.2f} °C)  
+- 🌧️ **Hujan Terbanyak**: {data.loc[data['Curah_Hujan'].idxmax()]['Tahun']} ({data['Curah_Hujan'].max():.1f} mm)  
+- ☀️ **Hujan Terkering**: {data.loc[data['Curah_Hujan'].idxmin()]['Tahun']} ({data['Curah_Hujan'].min():.1f} mm)
+""")
+
+# =====================
+# HISTOGRAM KELEMBABAN
+# =====================
+st.subheader("💧 Distribusi Kelembaban Tahunan")
+fig4, ax4 = plt.subplots()
+sns.histplot(data["kelembaban"], kde=True, bins=20, color="skyblue", ax=ax4)
+ax4.set_xlabel("Kelembaban (%)")
+st.pyplot(fig4)
+
+# =====================
+# TREN KELEMBABAN
+# =====================
+st.subheader("💨 Kelembaban Tahunan")
+st.line_chart(data.set_index("Tahun")["kelembaban"])
+
+# =====================
+# TREN MATAHARI
+# =====================
+if "matahari" in data.columns:
+    st.subheader("🌞 Durasi Penyinaran Matahari")
+    st.line_chart(data.set_index("Tahun")["matahari"])
+
+# =====================
+# TREN KECEPATAN ANGIN
+# =====================
+if "kecepatan_angin" in data.columns:
+    st.subheader("🍃 Kecepatan Angin Tahunan")
+    st.line_chart(data.set_index("Tahun")["kecepatan_angin"])
+
+# =====================
+# MATRIX KORELASI
+# =====================
+st.subheader("📌 Korelasi Antar Variabel Iklim")
+fig5, ax5 = plt.subplots(figsize=(8, 6))
+sns.heatmap(data.select_dtypes(include='number').corr(), annot=True, cmap="coolwarm", ax=ax5)
+st.pyplot(fig5)
